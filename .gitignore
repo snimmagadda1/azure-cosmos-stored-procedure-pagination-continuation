@@ -1,3 +1,5 @@
+.vscode/*
+exports.sh
 target/*
 # Compiled class file
 *.class
