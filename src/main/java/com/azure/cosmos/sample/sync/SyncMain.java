@@ -7,6 +7,7 @@ import com.azure.cosmos.ConsistencyLevel;
 import com.azure.cosmos.CosmosClient;
 import com.azure.cosmos.CosmosClientBuilder;
 import com.azure.cosmos.CosmosException;
+import com.azure.cosmos.CosmosStoredProcedure;
 import com.azure.cosmos.CosmosContainer;
 import com.azure.cosmos.CosmosDatabase;
 import com.azure.cosmos.models.FeedResponse;
@@ -15,6 +16,8 @@ import com.azure.cosmos.models.CosmosItemRequestOptions;
 import com.azure.cosmos.models.CosmosItemResponse;
 import com.azure.cosmos.models.PartitionKey;
 import com.azure.cosmos.models.CosmosQueryRequestOptions;
+import com.azure.cosmos.models.CosmosStoredProcedureProperties;
+import com.azure.cosmos.models.CosmosStoredProcedureResponse;
 import com.azure.cosmos.models.CosmosContainerProperties;
 import com.azure.cosmos.models.CosmosContainerResponse;
 import com.azure.cosmos.models.CosmosDatabaseResponse;
@@ -24,6 +27,8 @@ import com.azure.cosmos.sample.common.AccountSettings;
 import com.azure.cosmos.sample.common.Families;
 import com.azure.cosmos.sample.common.Family;
 
+import java.nio.file.Files;
+import java.nio.file.Paths;
 import java.time.Duration;
 import java.util.ArrayList;
 import java.util.Iterator;
@@ -36,9 +41,11 @@ public class SyncMain {
 
     private final String databaseName = "ToDoList";
     private final String containerName = "Items";
+    private final String storedProcName = "getIems";
 
     private CosmosDatabase database;
     private CosmosContainer container;
+    private CosmosStoredProcedure storedProcedure;
 
     public void close() {
         client.close();
@@ -55,12 +62,12 @@ public class SyncMain {
         p.initClient();
 
         try {
-            if (args != null && args.length > 0) {
+            if (true) {
                 p.getStartedDemo();
                 System.out.println("Demo complete, please hold while resources are released");
-            } else {
-                System.out.println("Running procedure");
             }
+            System.out.println("Running procedure to query items");
+
         } catch (Exception e) {
             e.printStackTrace();
             System.err.println(String.format("Cosmos getStarted failed with %s", e));
@@ -103,8 +110,11 @@ public class SyncMain {
             familiesToCreate.add(Families.getWakefieldFamilyItem());
             familiesToCreate.add(Families.getJohnsonFamilyItem());
             familiesToCreate.add(Families.getSmithFamilyItem());
-            createFamilies(familiesToCreate);
+            // TODO: remove when done
+            // createFamilies(familiesToCreate);
         }
+
+        createStoredProcedure();
     }
 
     private void createDatabaseIfNotExists() throws Exception {
@@ -173,46 +183,16 @@ public class SyncMain {
                 totalRequestCharge));
     }
 
-    private void readItems(ArrayList<Family> familiesToCreate) {
-        // Using partition key for point read scenarios.
-        // This will help fast look up of items because of partition key
-        familiesToCreate.forEach(family -> {
-            try {
-                CosmosItemResponse<Family> item = container.readItem(family.getId(),
-                        new PartitionKey(family.getPartitionKey()), Family.class);
-                double requestCharge = item.getRequestCharge();
-                Duration requestLatency = item.getDuration();
-                System.out.println(
-                        String.format("Item successfully read with id %s with a charge of %.2f and within duration %s",
-                                item.getItem().getId(), requestCharge, requestLatency));
-            } catch (CosmosException e) {
-                e.printStackTrace();
-                System.err.println(String.format("Read Item failed with %s", e));
-            }
-        });
+    private void createStoredProcedure() throws Exception {
+        CosmosStoredProcedureProperties definition = new CosmosStoredProcedureProperties(
+                "getIems",
+                Files.readString(Paths.get("get-items-continuation.js")));
+        container
+                .getScripts()
+                .createStoredProcedure(definition);
+        storedProcedure = container
+                .getScripts()
+                .getStoredProcedure(storedProcName);
     }
 
-    private void queryItems() {
-        // Set some common query options
-        int preferredPageSize = 10;
-        CosmosQueryRequestOptions queryOptions = new CosmosQueryRequestOptions();
-        // Set populate query metrics to get metrics around query executions
-        queryOptions.setQueryMetricsEnabled(true);
-
-        CosmosPagedIterable<Family> familiesPagedIterable = container.queryItems(
-                "SELECT * FROM Family WHERE Family.partitionKey IN ('Andersen', 'Wakefield', 'Johnson')", queryOptions,
-                Family.class);
-
-        familiesPagedIterable.iterableByPage(preferredPageSize).forEach(cosmosItemPropertiesFeedResponse -> {
-            System.out.println("Got a page of query result with " +
-                    cosmosItemPropertiesFeedResponse.getResults().size() + " items(s)"
-                    + " and request charge of " + cosmosItemPropertiesFeedResponse.getRequestCharge());
-
-            System.out.println("Item Ids " + cosmosItemPropertiesFeedResponse
-                    .getResults()
-                    .stream()
-                    .map(Family::getId)
-                    .collect(Collectors.toList()));
-        });
-    }
 }
