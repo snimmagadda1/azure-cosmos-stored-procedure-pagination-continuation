@@ -10,22 +10,22 @@ import com.azure.cosmos.CosmosException;
 import com.azure.cosmos.CosmosStoredProcedure;
 import com.azure.cosmos.CosmosContainer;
 import com.azure.cosmos.CosmosDatabase;
-import com.azure.cosmos.models.FeedResponse;
 import com.azure.cosmos.models.CosmosContainerProperties;
 import com.azure.cosmos.models.CosmosItemRequestOptions;
 import com.azure.cosmos.models.CosmosItemResponse;
 import com.azure.cosmos.models.PartitionKey;
-import com.azure.cosmos.models.CosmosQueryRequestOptions;
 import com.azure.cosmos.models.CosmosStoredProcedureProperties;
+import com.azure.cosmos.models.CosmosStoredProcedureRequestOptions;
 import com.azure.cosmos.models.CosmosStoredProcedureResponse;
-import com.azure.cosmos.models.CosmosContainerProperties;
 import com.azure.cosmos.models.CosmosContainerResponse;
 import com.azure.cosmos.models.CosmosDatabaseResponse;
 import com.azure.cosmos.models.ThroughputProperties;
-import com.azure.cosmos.util.CosmosPagedIterable;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import com.azure.cosmos.sample.common.AccountSettings;
+import com.azure.cosmos.sample.common.Address;
 import com.azure.cosmos.sample.common.Families;
 import com.azure.cosmos.sample.common.Family;
+import com.azure.cosmos.sample.common.GetItemsProcedureResponse;
 
 import java.nio.file.Files;
 import java.nio.file.Paths;
@@ -35,6 +35,8 @@ import java.util.Iterator;
 import java.util.List;
 import java.util.stream.Collectors;
 
+import org.apache.commons.lang3.StringUtils;
+
 public class SyncMain {
 
     private CosmosClient client;
@@ -42,6 +44,8 @@ public class SyncMain {
     private final String databaseName = "ToDoList";
     private final String containerName = "Items";
     private final String storedProcName = "getIems";
+    private final int MAX_QUERIES = 20;
+    private final ObjectMapper mapper = new ObjectMapper();
 
     private CosmosDatabase database;
     private CosmosContainer container;
@@ -62,10 +66,12 @@ public class SyncMain {
         p.initClient();
 
         try {
-            if (true) {
-                p.getStartedDemo();
-                System.out.println("Demo complete, please hold while resources are released");
-            }
+            // From azure starter, create & seed
+            p.getStartedDemo();
+
+            // Run stored procedure logic
+            p.runProcedureContinuation();
+            System.out.println("Demo complete, please hold while resources are released");
             System.out.println("Running procedure to query items");
 
         } catch (Exception e) {
@@ -104,14 +110,13 @@ public class SyncMain {
 
         // Setup family items to create
 
-        for (int i = 0; i < 200; i++) {
+        for (int i = 0; i < 300; i++) {
             ArrayList<Family> familiesToCreate = new ArrayList<>();
             familiesToCreate.add(Families.getAndersenFamilyItem());
             familiesToCreate.add(Families.getWakefieldFamilyItem());
             familiesToCreate.add(Families.getJohnsonFamilyItem());
             familiesToCreate.add(Families.getSmithFamilyItem());
-            // TODO: remove when done
-            // createFamilies(familiesToCreate);
+            createFamilies(familiesToCreate);
         }
 
         createStoredProcedure();
@@ -190,9 +195,50 @@ public class SyncMain {
         container
                 .getScripts()
                 .createStoredProcedure(definition);
+    }
+
+    private void runProcedureContinuation() throws Exception {
         storedProcedure = container
                 .getScripts()
                 .getStoredProcedure(storedProcName);
+
+        List<Address> fetched = new ArrayList<>();
+        GetItemsProcedureResponse response = runStoredProcedure(null);
+        fetched.addAll(response.getResult());
+        if (StringUtils.isNotBlank(response.getContinuation())) {
+            String continuation = response.getContinuation();
+            System.out.printf("Got initial response with continuation %s\n", continuation);
+            int attempts = 0;
+            while (StringUtils.isNotBlank(continuation) && attempts < MAX_QUERIES) {
+                GetItemsProcedureResponse page = runStoredProcedure(continuation);
+                fetched.addAll(page.getResult());
+                continuation = page.getContinuation();
+                System.out.printf("Got response with continuation %s\n", continuation);
+                attempts++;
+            }
+            System.out.printf("Fetched %d addresses from collection in %d attempts\n",
+                    fetched.size(),
+                    attempts);
+        }
+
+    }
+
+    private GetItemsProcedureResponse runStoredProcedure(String continuation) throws Exception {
+        List<Object> input = new ArrayList<Object>();
+        if (StringUtils.isNotBlank(continuation)) {
+            input.add(continuation);
+        }
+
+        CosmosStoredProcedureRequestOptions options = new CosmosStoredProcedureRequestOptions();
+        options.setPartitionKey(
+                new PartitionKey("Anderson"));
+
+        CosmosStoredProcedureResponse response = storedProcedure.execute(
+                input,
+                options);
+
+        return mapper.readValue(response.getResponseAsString(),
+                GetItemsProcedureResponse.class);
     }
 
 }
