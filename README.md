@@ -20,13 +20,13 @@ The calling of the stored procedure `while continuation != null` is orchestrated
 * First clone this repository using
 
 ```bash
-git clone https://github.com/Azure-Samples/azure-cosmos-java-getting-started.git
+git clone https://github.com/snimmagadda1/azure-cosmos-stored-procedure-pagination-continuation.git
 ```
 
 * From a command prompt or shell, run the following command to compile and resolve dependencies.
 
 ```bash
-cd azure-cosmos-java-getting-started
+cd azure-cosmos-stored-procedure-pagination-continuation
 mvn clean package
 ```
 
