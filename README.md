@@ -6,6 +6,8 @@ The stored procedure is written using the [JavaScript query api](https://learn.m
 
 The calling of the stored procedure `while continuation != null` is orchestrated by Java client code in `com.azure.cosmos.sample.sync.SyncMain`.
 
+### 🏠 [Description](https://s11a.com/writing-a-cosmos-db-stored-procedure-with-continuation)
+
 ### Prerequisites
 
 * Before you can run this sample, you must have the following prerequisites:
